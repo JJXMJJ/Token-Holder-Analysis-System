@@ -16,7 +16,7 @@ class TokenHolderAnalyzer:
             total_supply (float): The total supply of the token.
             locked_supply (float): The total supply locked in specific addresses.
             locked_addresses (List[str]): A list of addresses holding locked tokens.
-            token (str): The token identifier (e.g., 'bedrock-token').
+            token (str): The token identifier from Arkham (e.g., 'bedrock-token').
         """
         self.total_supply = total_supply
         self.locked_supply = locked_supply
@@ -95,7 +95,7 @@ class TokenHolderAnalyzer:
         print("\nFiltered Exchange Wallets:")
         print(exchange_wallets[['address', 'arkhamEntity.name', 'arkhamLabel.name']].to_string(index=False))
 
-        # Apply filters to exclude unwanted wallet types and labels
+        # Apply filters to exclude exchange wallet types and labels
         df = df[~df['arkhamEntity.type'].isin(['cex', 'dex', 'yield', 'misc'])]
         df = df[~df['arkhamLabel.name'].str.contains('Deposit', na=False)]
 
