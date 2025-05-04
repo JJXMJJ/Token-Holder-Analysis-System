@@ -1,6 +1,7 @@
 import requests
 from typing import Optional, Dict, List, Any
 
+
 class PancakeSwapAnalyzer:
     """
     A class to analyze PancakeSwap pools and calculate price impacts for token swaps.
@@ -33,7 +34,7 @@ class PancakeSwapAnalyzer:
         except requests.exceptions.RequestException as e:
             print(f"Error fetching pool data: {e}")
             return None
-        
+
     def get_available_chains(self) -> Optional[List[Dict[str, Any]]]:
         """
         Fetch all available chains for the `get_token_data` function from the Coingecko API.
@@ -74,7 +75,9 @@ class PancakeSwapAnalyzer:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             token_data = response.json()
-            token_data[token_address]['supply'] = token_data[token_address]['usd_market_cap'] / token_data[token_address]['usd']
+            # Calculate token supply if market cap and price are available
+            if token_address in token_data and 'usd_market_cap' in token_data[token_address] and 'usd' in token_data[token_address]:
+                token_data[token_address]['supply'] = token_data[token_address]['usd_market_cap'] / token_data[token_address]['usd']
             return token_data[token_address]
         except requests.exceptions.RequestException as e:
             print(f"Error fetching token data: {e}")
@@ -93,38 +96,49 @@ class PancakeSwapAnalyzer:
         Returns:
             Optional[float]: The price impact as a percentage, or None if an error occurs.
         """
+        # Fetch pool data from the PancakeSwap API
         pool_data = self.get_pool_data(pool_address)
         if not pool_data:
+            print("Error: Unable to fetch pool data.")
             return None
 
-        inital_reserve_0 = float(pool_data['tvlToken0'])
-        inital_reserve_1 = float(pool_data['tvlToken1'])
-        constant_product = inital_reserve_0 * inital_reserve_1
+        # Extract initial reserves of the two tokens in the pool
+        inital_reserve_0 = float(pool_data['tvlToken0'])  # Reserve of token0
+        inital_reserve_1 = float(pool_data['tvlToken1'])  # Reserve of token1
+        constant_product = inital_reserve_0 * inital_reserve_1  # Constant product for the pool (x * y = k)
 
-        # Determine token in/out and adjust amounts accordingly
+        # Determine which token is being swapped and calculate the price impact
         if token_in == pool_data['token0']['id']:  # Token0 is being swapped
-            token_in_symbol = pool_data['token1']['symbol']
-            initial_price = inital_reserve_0 / inital_reserve_1  # Token1 per Token0
-            new_reserve_0 = inital_reserve_0 + amount_in * (1 - fee)
-            new_reserve_1 = constant_product / new_reserve_0
-            amount_out = inital_reserve_1 - new_reserve_1
-            trade_price = (amount_in * (1 - fee)) / amount_out
-            price_impact = 1 - initial_price / trade_price
+            token_in_symbol = pool_data['token0']['symbol']
+            token_out_symbol = pool_data['token1']['symbol']
+            initial_price = inital_reserve_1 / inital_reserve_0  # Price of token0 in terms of token1
+            new_reserve_0 = inital_reserve_0 + amount_in * (1 - fee)  # Adjust reserve0 after swap
+            new_reserve_1 = constant_product / new_reserve_0  # Adjust reserve1 to maintain constant product
+            amount_out = inital_reserve_1 - new_reserve_1  # Amount of token1 received
+            trade_price = amount_out / (amount_in * (1 - fee))  # Effective trade price (token1 per token0)
+            price_impact = 1 - trade_price / initial_price  # Calculate price impact
         elif token_in == pool_data['token1']['id']:  # Token1 is being swapped
             token_in_symbol = pool_data['token1']['symbol']
-            initial_price = inital_reserve_1 / inital_reserve_0  # Token0 per Token1
-            new_reserve_1 = inital_reserve_1 + amount_in * (1 - fee)
-            new_reserve_0 = constant_product / new_reserve_1
-            amount_out = inital_reserve_0 - new_reserve_0
-            trade_price = (amount_in * (1 - fee)) / amount_out
-            price_impact = 1 - initial_price / trade_price
+            token_out_symbol = pool_data['token0']['symbol']
+            initial_price = inital_reserve_0 / inital_reserve_1  # Price of token1 in terms of token0
+            new_reserve_1 = inital_reserve_1 + amount_in * (1 - fee)  # Adjust reserve1 after swap
+            new_reserve_0 = constant_product / new_reserve_1  # Adjust reserve0 to maintain constant product
+            amount_out = inital_reserve_0 - new_reserve_0  # Amount of token0 received
+            trade_price = amount_out / (amount_in * (1 - fee))  # Effective trade price (token0 per token1)
+            price_impact = 1 - trade_price / initial_price  # Calculate price impact
         else:
-            print('Please check pool and token addresses')
+            print("Error: Token address does not match pool tokens.")
             return None
 
+        # Print detailed information about the swap
         print(f"Pool: {pool_data['token0']['symbol']}/{pool_data['token1']['symbol']}")
-        print(f"Current Price: 1 {pool_data['token0']['symbol']} = {pool_data['token0Price']} {pool_data['token1']['symbol']}")
+        print(f"Current Price: 1 {token_in_symbol} = {initial_price:.6f} {token_out_symbol}")
         print(f"TVL: ${float(pool_data['tvlUSD']):,.2f}")
-        print(f"\nPrice impact for swapping {amount_in} {token_in_symbol}: {price_impact * 100:.6f}%")
+        print(f"Initial Reserves: {inital_reserve_0:.6f} {pool_data['token0']['symbol']} / {inital_reserve_1:.6f} {pool_data['token1']['symbol']}")
+        print(f"New Reserves After Swap: {new_reserve_0:.6f} {pool_data['token0']['symbol']} / {new_reserve_1:.6f} {pool_data['token1']['symbol']}")
+        print(f"Amount In: {amount_in:.6f} {token_in_symbol}")
+        print(f"Amount Out: {amount_out:.6f} {token_out_symbol}")
+        print(f"Trade Price: 1 {token_in_symbol} = {trade_price:.6f} {token_out_symbol}")
+        print(f"Price Impact: {price_impact * 100:.6f}%")
 
         return price_impact
