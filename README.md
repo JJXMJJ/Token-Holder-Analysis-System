@@ -61,7 +61,7 @@ Token holder share is calculated as:
 
 ---
 
-## Task 4: Pancake Simulation
+## Task 4
 
 ### Functions:
 1. **`get_token_data`**:  
